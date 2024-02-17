@@ -1,0 +1,77 @@
+const express = require('express');
+const bodyParser = require('body-parser');
+const mongoose = require('mongoose');
+const { Client, GatewayIntentBits } = require('discord.js');
+
+const app = express();
+const port = 3551;
+
+app.use(bodyParser.json());
+
+mongoose.connect('mongodb://localhost:27017/fast_database', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+const User = mongoose.model('User', {
+  discordId: String,
+  username: String,
+  email: String,
+  password: String,
+  created: { type: Date, default: Date.now },
+  banned: { type: Boolean, default: false },
+});
+
+const discordBotToken = 'YOUR_DISCORD_BOT_TOKEN';
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.once('ready', () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+client.on('messageCreate', (message) => {
+  if (message.content.toLowerCase() === '!ping') {
+    message.reply('Pong!');
+  }
+});
+
+client.login(discordBotToken);
+
+app.post('/api/create-account', async (req, res) => {
+  const { discordId, username, email, password } = req.body;
+
+  // Basic validation
+  if (!discordId || !username || !email || !password) {
+    return res.status(400).json({ error: 'Discord ID, username, email, and password are required.' });
+  }
+
+  // Check if the username or email is already taken
+  const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+  if (existingUser) {
+    return res.status(409).json({ error: 'Username or email already in use.' });
+  }
+
+  // Create a new user object
+  const newUser = new User({
+    discordId,
+    username,
+    email,
+    password, // Note: In a real application, you'd hash the password before storing it
+  });
+
+  // Store the new user
+  await newUser.save();
+
+  // Respond with the created user
+  res.status(201).json({ message: 'Account created successfully', user: newUser });
+});
+
+app.listen(port, () => {
+  console.log(`Backend server listening at http://localhost:${port}`);
+});
